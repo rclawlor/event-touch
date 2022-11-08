@@ -3,7 +3,13 @@ import cv2
 import math
 
 class SimulateEvent(object):
-    def __init__(self, colorspace: str, event_threshold: np.array, buffer_length: int = None, buffer_method: str = 'cumulative'):
+
+    def __init__(
+            self, 
+            colorspace: str, 
+            event_threshold: np.array, 
+            buffer_length: int = None, 
+            buffer_method: str = 'cumulative'):
 
         self.colorspace = colorspace
         self.pixel_intensity_memory = None
@@ -22,10 +28,23 @@ class SimulateEvent(object):
     def __enter__(self):
         return self
     
-    def __exit__(self, exception_type, exception_value, traceback):
+    def __exit__(
+            self, 
+            exception_type, 
+            exception_value, 
+            traceback):
         return
     
-    def intialise_pixel_memory(self, frame: np.array):
+    def intialise_pixel_memory(
+            self, 
+            frame: np.array):
+        """
+        Initialises the pixel intensity memory with the input Digit frame, and fills event buffer with zeros.
+
+        Parameters
+        ----------
+            `frame`         - current image frame in chosen colorspace\n
+        """
         if self.colorspace=='BGR':
             self.pixel_intensity_memory = frame
         else:
@@ -35,13 +54,15 @@ class SimulateEvent(object):
 
         return
     
-    def simulate_event(self, digit_frame: np.array) -> np.array:
+    def simulate_event(
+            self, 
+            digit_frame: np.array) -> np.array:
         """
-        Calculates the generated events using each color channel independently
+        Calculates the generated events using the specified colorspace.
 
         Parameters
         ----------
-            `frame`         - current image frame in chosen colorspace\n
+            `digit_frame`   - current image frame in chosen colorspace\n
 
         Returns
         -------
@@ -78,19 +99,19 @@ class SimulateEvent(object):
 
         return self.event_frame
     
-    def simulate_event_buffer(self, digit_frame: np.array) -> np.array:
+    def simulate_event_buffer(
+            self, 
+            digit_frame: np.array) -> np.array:
         """
-        Computes the temporal buffer using the most recent events and the current event buffer
+        Computes and updates the temporal buffer using the most recent event frame and the current event buffer.
 
         Parameters
         ----------
-            `event`           - the last event matrix generated\n
-            `buffer`          - current buffer\n
-            `method`          - either 'discrete', 'or' or 'cumulative'\n
+            `digit_frame`   - current image frame in chosen colorspace\n
 
         Returns
         -------
-            `buffer`          - updated buffer
+            `event_buffer`  - updated buffer
         """
 
         self.simulate_event(digit_frame)
@@ -113,17 +134,21 @@ class SimulateEvent(object):
 
         return self.event_buffer
     
-    def subsample_event(self, digit_frame: np.array, iterations: int) -> list:
+    def subsample_event(
+            self, 
+            digit_frame: np.array, 
+            iterations: int) -> list:
         """
-        DESCRIPTION
+        Subsamples the current event frame into lower resolutions.
 
         Parameters
         ----------
-            `iterations`        - the current event frame\n
+            `digit_frame`   - current image frame in chosen colorspace\n
+            `iterations`    - the number of subsampling iterations\n
 
         Returns
         -------
-            `event_sub`     - the subsampled event frame
+            `sample_space`  - list of event frames in decreasing resolutions
         """
 
         event_frame = self.simulate_event(digit_frame)
