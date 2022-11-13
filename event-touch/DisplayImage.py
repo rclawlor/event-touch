@@ -41,6 +41,32 @@ class DisplayImage(object):
             e = np.flip(end)
             img_arrow = cv2.arrowedLine(image, tuple(np.rint(s).astype(int)), tuple(np.rint(e).astype(int)), color, thickness)
             return img_arrow
+        
+    def draw_circle(
+            self, 
+            image: np.array, 
+            center: np.array, 
+            radius: float, 
+            color: tuple = (255,255,255), 
+            thickness: int = 2) -> np.array:
+        """
+        Draws a circle on the input image
+
+        Parameters
+        ----------
+            `image`     - the image on which to draw an arrow\n
+            `center`    - center coordinate\n
+            `radius`    - circle radius\n
+            `color`     - circle color as RGB tuple\n
+            `thickness` - circle thickness in pixels\n
+
+        Returns
+        -------
+            `event_color`       - the colored event frame in BGR colorspace
+        """
+
+        img_circle = cv2.circle(image, tuple(np.rint(np.flip(center)).astype(int)), np.rint(radius).astype(int), color, thickness)
+        return img_circle
     
     def map_event_to_color(
             self, 
