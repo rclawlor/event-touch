@@ -41,6 +41,42 @@ class DisplayImage(object):
             e = np.flip(end)
             img_arrow = cv2.arrowedLine(image, tuple(np.rint(s).astype(int)), tuple(np.rint(e).astype(int)), color, thickness)
             return img_arrow
+        
+    def draw_circle(
+            self, 
+            image: np.array, 
+            center: np.array, 
+            radius: float, 
+            color: tuple = (255,255,255), 
+            thickness: int = 2) -> np.array:
+        """
+        Draws a circle on the input image
+
+        Parameters
+        ----------
+            `image`     - the image on which to draw an arrow\n
+            `center`    - center coordinate\n
+            `radius`    - circle radius\n
+            `color`     - circle color as RGB tuple\n
+            `thickness` - circle thickness in pixels\n
+
+        Returns
+        -------
+            `event_color`       - the colored event frame in BGR colorspace
+        """
+        if center[0] < 0:
+            center[0] = 0
+        elif center[0] > image.shape[0]:
+            center[0] = image.shape[0]-1
+        if center[1] < 0:
+            center[1] = 0
+        elif center[1] > image.shape[1]:
+            center[1] = image.shape[1]-1
+        try:
+            img_circle = cv2.circle(image, tuple(np.rint(np.flip(center)).astype(int)), np.rint(np.max(radius,0)).astype(int), color, thickness)
+        except:
+            img_circle = image
+        return img_circle
     
     def map_event_to_color(
             self, 
@@ -107,7 +143,8 @@ class DisplayImage(object):
 
     def show_image(
             self, 
-            images: list):
+            images: list,
+            resize: str = 'pad'):
         """
         Maps an event array to a BGR image
 
@@ -119,14 +156,20 @@ class DisplayImage(object):
         img_pad = []
         for image in images:
             if (image.shape[0] < images[0].shape[0]) or (image.shape[1] < images[0].shape[1]):
-                image = np.pad(
-                    image, 
-                    pad_width=[
-                        (int((images[0].shape[0]-image.shape[0])/2), int((images[0].shape[0]-image.shape[0])/2)),
-                        (int((images[0].shape[1]-image.shape[1])/2), int((images[0].shape[1]-image.shape[1])/2)),
-                        (0, 0)], 
-                    mode='constant')
-                print(image.shape)
+                if resize=='pad':
+                    image = np.pad(
+                        image, 
+                        pad_width=[
+                            (int((images[0].shape[0]-image.shape[0])/2), int((images[0].shape[0]-image.shape[0])/2)),
+                            (int((images[0].shape[1]-image.shape[1])/2), int((images[0].shape[1]-image.shape[1])/2)),
+                            (0, 0)], 
+                        mode='constant')
+                elif resize=='repeat':
+                    img_tmp = np.repeat(image, repeats=int(images[0].shape[0]/image.shape[0]), axis=0)
+                    image = np.repeat(img_tmp, repeats=int(images[0].shape[0]/image.shape[0]), axis=1)
+                else:
+                    raise ValueError('Invalid resize method')
+                    
             img_pad.append(image)
         img = np.concatenate(img_pad, axis=1)
         cv2.imshow(self.window_name, img)

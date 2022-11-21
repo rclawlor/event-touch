@@ -1,6 +1,8 @@
 import numpy as np
 import cv2
-import math
+from scipy.ndimage.filters import gaussian_filter
+import matplotlib.pyplot as plt
+from scipy.signal import convolve2d
 
 class SimulateEvent(object):
 
@@ -136,8 +138,10 @@ class SimulateEvent(object):
     
     def subsample_event(
             self, 
-            digit_frame: np.array, 
-            iterations: int) -> list:
+            event_frame: np.array, 
+            iterations: int,
+            method: str = 'signed',
+            threshold: int = 1) -> list:
         """
         Subsamples the current event frame into lower resolutions.
 
@@ -151,19 +155,69 @@ class SimulateEvent(object):
             `sample_space`  - list of event frames in decreasing resolutions
         """
 
-        event_frame = self.simulate_event(digit_frame)
-        temp = np.copy(event_frame)
         sample_space = [event_frame]
 
-        for _ in range(iterations):
-
-            temp += np.roll(event_frame, shift=1, axis=0)
-            temp += np.roll(temp, shift=1, axis=1)
-            event_sub = temp[1::2,1::2]
-            event_sub[event_sub>1] = 1
-            event_sub[event_sub<-1] = -1
-            sample_space.append(event_sub)
-            event_frame = np.copy(event_sub)
+        if method=='signed':
             temp = np.copy(event_frame)
+            for _ in range(iterations):
+
+                temp += np.roll(event_frame, shift=1, axis=0)
+                temp += np.roll(temp, shift=1, axis=1)
+                event_sub = temp[1::2,1::2]
+                event_sub[event_sub>1] = 1
+                event_sub[event_sub<-1] = -1
+                sample_space.append(event_sub)
+                event_frame = np.copy(event_sub)
+                temp = np.copy(event_frame)
+        elif method=='unsigned':
+            abs_event_frame = np.abs(event_frame)
+            temp = np.copy(abs_event_frame)
+            for _ in range(iterations):
+
+                temp += np.roll(abs_event_frame, shift=1, axis=0)
+                temp += np.roll(temp, shift=1, axis=1)
+                event_sub = temp[1::2,1::2]
+                event_sub[event_sub<threshold] = 0
+                event_sub[event_sub>threshold] = 1
+                sample_space.append(event_sub)
+                abs_event_frame = np.copy(event_sub)
+                temp = np.copy(abs_event_frame)
         
         return sample_space
+
+    def event_noise_filter(
+            self, 
+            event_frame: np.array,
+            sigma: int = 5,
+            threshold: float = 0.2):
+
+        """
+        Subsamples the current event frame into lower resolutions.
+
+        Parameters
+        ----------
+            `digit_frame`   - current image frame in chosen colorspace\n
+            `iterations`    - the number of subsampling iterations\n
+
+        Returns
+        -------
+            `sample_space`  - list of event frames in decreasing resolutions
+        """
+        abs_event_frame = np.abs(event_frame)
+        filtered_frame = np.zeros_like(abs_event_frame)
+        tmp = gaussian_filter(abs_event_frame, sigma)
+        tmp[tmp < threshold] = 0
+        filtered_frame[np.nonzero(tmp)] = 1
+
+        return event_frame*filtered_frame
+
+    def xor_event_buffer(self):
+        xor_event_buffer = np.zeros([self.event_frame.shape[0], self.event_frame.shape[1], self.buffer_length-1])
+        for element in range(0, self.buffer_length-1):
+            xor_event_buffer[:,:,element] = np.logical_xor(np.abs(self.event_buffer[:,:,element]), np.abs(self.event_buffer[:,:,element+1]))
+        
+        return xor_event_buffer
+    
+    def calculate_event_neighbours(self, size: int = 5):
+
+        return convolve2d(np.abs(self.event_frame), np.ones([size,size]))

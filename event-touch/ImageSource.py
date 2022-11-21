@@ -2,6 +2,12 @@ from abc import ABC, abstractmethod
 from digit_interface import Digit
 import cv2
 import numpy as np
+import hydra
+from hydra import compose, initialize_config_dir
+from hydra.core.global_hydra import GlobalHydra
+import pybullet as p
+import pybulletX as px
+import tacto
 
 class ImageSource(ABC):
 
@@ -51,6 +57,82 @@ class DigitSensor(ImageSource):
     def __exit__(self, exception_type, exception_value, traceback):
         # Disconnect Digit sensor
         self.disconnect()
+    
+class TactoSimulator(ImageSource):
+
+    def __init__(self, config_path: str = None, environment_config_name: str = None, sensor_config_path: str = None, sensor_config_name: str = None):
+        if config_path is None:
+            self.config_path = '/home/ronan/masters_project/software/tacto_simulations/conf'
+        else:
+            self.config_path = config_path
+        
+        if environment_config_name is None:
+            self.environment_config_name = 'digit_event'
+        else:
+            self.environment_config_name = environment_config_name
+
+        if sensor_config_path is None:
+            self.sensor_config_path = './tacto_simulations/tacto'
+        else:
+            self.sensor_config_path = sensor_config_path
+
+        if sensor_config_name is None:
+            self.sensor_config_name = 'config_digit_shadow'
+        else:
+            self.sensor_config_name = sensor_config_name
+
+        initialize_config_dir(version_base=None, config_dir=self.config_path, job_name="digit_event")
+        self.cfg = compose(config_name=self.environment_config_name)
+
+        self.t = None
+
+        return
+
+    def __enter__(self):
+
+        # Initialize digits
+        bg = cv2.imread(f'{self.config_path}/bg_digit_240_320.jpg')
+
+        self.digits = tacto.Sensor(
+            **self.cfg.tacto,
+            **{"config_path": f'{self.sensor_config_path}/{self.sensor_config_name}.yml'},
+            background=bg
+        )
+        # Initialize World
+        px.init()
+        p.resetDebugVisualizerCamera(**self.cfg.pybullet_camera)
+
+        # Create and initialize DIGIT
+        digit_body = px.Body(**self.cfg.digit)
+        self.digits.add_camera(digit_body.id, [-1])
+
+        # Add object to pybullet and tacto simulator
+        obj = px.Body(**self.cfg.object)
+        self.digits.add_body(obj)
+
+        # Create control panel to control the 6DoF pose of the object
+        panel = px.gui.PoseControlPanel(obj, **self.cfg.object_control_panel)
+        panel.start()
+
+        # run p.stepSimulation in another thread
+        self.t = px.utils.SimulationThread(real_time_factor=1.0)
+        self.t.start()
+        
+        return self
+    
+    def __exit__(self, exception_type, exception_value, traceback):
+        # Disconnect Digit sensor
+        self.disconnect()
+    
+
+    def get_frame(self):
+        colors, depth = self.digits.render(noise=False)
+        digit_frame = np.concatenate(colors, axis=1)
+        return digit_frame
+    
+    def disconnect(self):
+        GlobalHydra.instance().clear()
+        return
     
 class Dataset(ImageSource):
     """
