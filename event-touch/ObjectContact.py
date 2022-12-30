@@ -36,6 +36,28 @@ class ObjectContact(object):
 
         return event_mean, event_positive_mean, event_negative_mean
     
+    def abs_event_position_mean(self, event_frame: np.array):
+        """
+        Calcuates the center of all events.
+
+        Parameters
+        ----------
+            `event_frame`       - the last event matrix generated\n
+
+        Returns
+        -------
+            `center_avg`        - coordinates of average event location
+        """
+
+        event_avg = np.nonzero(np.abs(event_frame) == 1)
+
+        if (len(event_avg[0]) < 1):
+            event_mean = None
+        else:
+            event_mean = np.array([np.mean(event_avg[0]), np.mean(event_avg[1])])
+
+        return event_mean
+    
     def event_position_variance(self, event_frame: np.array, event_mean: np.array):
 
         """

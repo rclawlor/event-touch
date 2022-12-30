@@ -8,6 +8,7 @@ from hydra.core.global_hydra import GlobalHydra
 import pybullet as p
 import pybulletX as px
 import tacto
+import os 
 
 class ImageSource(ABC):
 
@@ -60,31 +61,38 @@ class DigitSensor(ImageSource):
     
 class TactoSimulator(ImageSource):
 
-    def __init__(self, config_path: str = None, environment_config_name: str = None, sensor_config_path: str = None, sensor_config_name: str = None):
+    def __init__(
+            self, 
+            config_path: str = None, 
+            environment_config_name: str = 'digit', 
+            sensor_config_path: str = None, 
+            sensor_config_name: str = 'config_digit', 
+            use_panel: bool = True):
+
         if config_path is None:
-            self.config_path = '/home/ronan/masters_project/software/tacto_simulations/conf'
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            self.config_path = dir_path+'/conf'
         else:
             self.config_path = config_path
         
-        if environment_config_name is None:
-            self.environment_config_name = 'digit_event'
-        else:
-            self.environment_config_name = environment_config_name
-
         if sensor_config_path is None:
-            self.sensor_config_path = './tacto_simulations/tacto'
+            dir_path = os.path.dirname(os.path.realpath(__file__))
+            self.sensor_config_path = dir_path+'/conf'
         else:
             self.sensor_config_path = sensor_config_path
 
-        if sensor_config_name is None:
-            self.sensor_config_name = 'config_digit_shadow'
-        else:
-            self.sensor_config_name = sensor_config_name
+        self.environment_config_name = environment_config_name
+        self.sensor_config_name = sensor_config_name
+        self.panel = use_panel
 
-        initialize_config_dir(version_base=None, config_dir=self.config_path, job_name="digit_event")
+        initialize_config_dir(version_base=None, config_dir=self.config_path, job_name="digit")
         self.cfg = compose(config_name=self.environment_config_name)
 
         self.t = None
+
+        self.obj = None
+
+        self.depth = None
 
         return
 
@@ -92,6 +100,7 @@ class TactoSimulator(ImageSource):
 
         # Initialize digits
         bg = cv2.imread(f'{self.config_path}/bg_digit_240_320.jpg')
+        bg = cv2.cvtColor(bg, cv2.COLOR_BGR2RGB)
 
         self.digits = tacto.Sensor(
             **self.cfg.tacto,
@@ -107,12 +116,13 @@ class TactoSimulator(ImageSource):
         self.digits.add_camera(digit_body.id, [-1])
 
         # Add object to pybullet and tacto simulator
-        obj = px.Body(**self.cfg.object)
-        self.digits.add_body(obj)
+        self.obj = px.Body(**self.cfg.object)
+        self.digits.add_body(self.obj)
 
         # Create control panel to control the 6DoF pose of the object
-        panel = px.gui.PoseControlPanel(obj, **self.cfg.object_control_panel)
-        panel.start()
+        if self.panel==True:
+            panel = px.gui.PoseControlPanel(self.obj, **self.cfg.object_control_panel)
+            panel.start()
 
         # run p.stepSimulation in another thread
         self.t = px.utils.SimulationThread(real_time_factor=1.0)
@@ -126,7 +136,7 @@ class TactoSimulator(ImageSource):
     
 
     def get_frame(self):
-        colors, depth = self.digits.render(noise=False)
+        colors, self.depth = self.digits.render(noise=True)
         digit_frame = np.concatenate(colors, axis=1)
         return digit_frame
     

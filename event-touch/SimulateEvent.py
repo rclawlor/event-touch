@@ -103,7 +103,9 @@ class SimulateEvent(object):
     
     def simulate_event_buffer(
             self, 
-            digit_frame: np.array) -> np.array:
+            digit_frame: np.array,
+            filter: bool = False,
+            structure: np.array = None) -> np.array:
         """
         Computes and updates the temporal buffer using the most recent event frame and the current event buffer.
 
@@ -117,6 +119,8 @@ class SimulateEvent(object):
         """
 
         self.simulate_event(digit_frame)
+        if filter==True:
+            self.event_frame = self.filter_events_by_neighbours(structure)
 
         if self.buffer_method=='discrete':
             for element in range(1, self.buffer_length):
@@ -211,25 +215,76 @@ class SimulateEvent(object):
 
         return event_frame*filtered_frame
     
-    def filter_events_by_neighbours(self):
+    # def filter_events_by_neighbours(self):
+
+    #     row, column = self.event_frame.shape
+
+    #     # Create padded array to share memory instead of using np.roll()
+    #     event_frame_padded = np.pad(np.abs(self.event_frame), ((2,2), (2,2)), 'constant').astype('uint8')
+    #     # Create 'rolled' arrays and check for neighbours
+    #     s1 = event_frame_padded[3:3+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
+    #     s2 = event_frame_padded[4:4+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
+    #     e1 = event_frame_padded[2:2+row, 3:3+column] & event_frame_padded[2:-2, 2:-2]
+    #     e2 = event_frame_padded[2:2+row, 4:4+column] & event_frame_padded[2:-2, 2:-2]
+    #     n1 = event_frame_padded[1:1+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
+    #     n2 = event_frame_padded[0:0+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
+    #     w1 = event_frame_padded[2:2+row, 1:1+column] & event_frame_padded[2:-2, 2:-2]
+    #     w2 = event_frame_padded[2:2+row, 0:0+column] & event_frame_padded[2:-2, 2:-2]
+
+    #     event_frame_neighbours = ((s1 | s2 | e1 | e2 | n1 | n2 | w1 | w2).astype(self.event_frame.dtype))*self.event_frame
+
+    #     return event_frame_neighbours
+    
+    def filter_events_by_neighbours(self, structure: np.array):
 
         row, column = self.event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+        structure[int(x_offset/2), int(y_offset/2)] = 0
 
         # Create padded array to share memory instead of using np.roll()
-        event_frame_padded = np.pad(np.abs(self.event_frame), ((2,2), (2,2)), 'constant').astype('uint8')
-        # Create 'rolled' arrays and check for neighbours
-        s1 = event_frame_padded[3:3+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-        s2 = event_frame_padded[4:4+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-        e1 = event_frame_padded[2:2+row, 3:3+column] & event_frame_padded[2:-2, 2:-2]
-        e2 = event_frame_padded[2:2+row, 4:4+column] & event_frame_padded[2:-2, 2:-2]
-        n1 = event_frame_padded[1:1+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-        n2 = event_frame_padded[0:0+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-        w1 = event_frame_padded[2:2+row, 1:1+column] & event_frame_padded[2:-2, 2:-2]
-        w2 = event_frame_padded[2:2+row, 0:0+column] & event_frame_padded[2:-2, 2:-2]
+        event_frame_padded = np.pad(np.abs(self.event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        # Find elements to pad
+        y, x = np.nonzero(structure!=0)
+        # Create 'rolled' arrays
+        event_frame_neighbours = np.copy(
+                                event_frame_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
+                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
 
-        event_frame_neighbours = ((s1 | s2 | e1 | e2 | n1 | n2 | w1 | w2).astype(self.event_frame.dtype))*self.event_frame
+        for i in range(1, x.shape[0]):
+            neighbour_frame = (
+                            event_frame_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+                            & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_frame_neighbours |= neighbour_frame
+        # .astype(event_frame.dtype)
+        return event_frame_neighbours.astype(self.event_frame.dtype)*self.event_frame
+    
+    def filter_events_by_neighbour_number(self, structure: np.array, threshold: int = 1):
 
-        return event_frame_neighbours
+        row, column = self.event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+        structure[int(x_offset/2), int(y_offset/2)] = 0
+
+        # Create padded array to share memory instead of using np.roll()
+        event_frame_padded = np.pad(np.abs(self.event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        # Find elements to pad
+        y, x = np.nonzero(structure!=0)
+        # Create 'rolled' arrays
+        event_frame_neighbour_number = np.copy(
+                                event_frame_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
+                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+
+        for i in range(1, x.shape[0]):
+            neighbour_frame = (
+                            event_frame_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+                            & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_frame_neighbour_number += neighbour_frame
+        # .astype(event_frame.dtype)
+
+        return (event_frame_neighbour_number>threshold).astype(self.event_frame.dtype)*self.event_frame
 
     def xor_event_buffer(self):
         xor_event_buffer = np.zeros([self.event_frame.shape[0], self.event_frame.shape[1], self.buffer_length-1])
