@@ -1,0 +1,3 @@
+recursive-include event_touch/conf *.jpg *.yml *.yaml
+recursive-include event_touch/meshes *.STL *.urdf *.txt
+recursive-include event_touch/objects *.gif *.urdf *.obj *.mtl
