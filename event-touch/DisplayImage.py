@@ -3,6 +3,10 @@ import numpy as np
 import pickle
 
 class DisplayImage(object):
+    """
+    Class responsible for the conversion of event frames into meaningful images. Also provides convenient functions
+    for modifying and displaying images.
+    """
 
     def __init__(self):
         self.window_name = 'DIGIT'
@@ -85,7 +89,7 @@ class DisplayImage(object):
             negative_color: tuple, 
             background_color: tuple = (0,0,0)) -> np.array:
         """
-        Maps an event array to a BGR image
+        Maps an event array to a BGR image.
 
         Parameters
         ----------
@@ -144,13 +148,16 @@ class DisplayImage(object):
     def show_image(
             self, 
             images: list,
-            resize: str = 'pad'):
+            resize: str = 'pad',
+            window_scale: float = 1.0,
+            image_frame: bool = False):
         """
-        Maps an event array to a BGR image
+        Display list of images in a single window using OpenCV
 
         Parameters
         ----------
             `images`       - list of np.array instances to be displayed
+            `resize`       - either 'pad' to add black border or 'repeat' to scale image to correct resolution using nearest neighour.
         """
 
         img_pad = []
@@ -169,9 +176,11 @@ class DisplayImage(object):
                     image = np.repeat(img_tmp, repeats=int(images[0].shape[0]/image.shape[0]), axis=1)
                 else:
                     raise ValueError('Invalid resize method')
-                    
+            if image_frame==True:
+                image = np.pad(image, [(1,1),(1,1),(0,0)], mode='constant')
             img_pad.append(image)
         img = np.concatenate(img_pad, axis=1)
+        img = cv2.resize(img, (int(window_scale*img.shape[1]),int(window_scale*img.shape[0])))
         cv2.imshow(self.window_name, img)
 
         return

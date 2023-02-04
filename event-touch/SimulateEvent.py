@@ -5,7 +5,9 @@ import matplotlib.pyplot as plt
 from scipy.signal import convolve2d
 
 class SimulateEvent(object):
-
+    """
+    Simulate an event camera using traditional RGB images
+    """
     def __init__(
             self, 
             colorspace: str, 
@@ -15,6 +17,7 @@ class SimulateEvent(object):
 
         self.colorspace = colorspace
         self.pixel_intensity_memory = None
+        self.temp = None
 
         self.event_threshold = event_threshold
         self.event_frame = None
@@ -53,6 +56,7 @@ class SimulateEvent(object):
             self.pixel_intensity_memory = cv2.cvtColor(frame, self.colorspace_code[self.colorspace])
         
         self.event_buffer = np.zeros([frame.shape[0], frame.shape[1], self.buffer_length])
+        self.temp = frame
 
         return
     
@@ -78,7 +82,7 @@ class SimulateEvent(object):
         else:
             cvt_frame = cv2.cvtColor(digit_frame, int(self.colorspace_code[self.colorspace]))
             diff = (np.log2(cvt_frame).astype('float32') - np.log2(self.pixel_intensity_memory).astype('float32'))
-
+        # self.diff = diff
         if len(diff.shape) == 3:
             index_positive = np.nonzero(
                 (diff[:,:,0]>self.event_threshold[0]) 
@@ -99,6 +103,8 @@ class SimulateEvent(object):
         self.pixel_intensity_memory[index_positive] = cvt_frame[index_positive]
         self.pixel_intensity_memory[index_negative] = cvt_frame[index_negative]
 
+        # self.temp[index_positive] = digit_frame[index_positive]
+
         return self.event_frame
     
     def simulate_event_buffer(
@@ -112,6 +118,8 @@ class SimulateEvent(object):
         Parameters
         ----------
             `digit_frame`   - current image frame in chosen colorspace\n
+            `filter`        - bool, dictates whether event neighbour filter is used\n
+            `structure`     - neighbours to be checked if using filter\n
 
         Returns
         -------
@@ -140,54 +148,33 @@ class SimulateEvent(object):
 
         return self.event_buffer
     
-    def subsample_event(
-            self, 
-            event_frame: np.array, 
-            iterations: int,
-            method: str = 'signed',
-            threshold: int = 1) -> list:
-        """
-        Subsamples the current event frame into lower resolutions.
-
-        Parameters
-        ----------
-            `digit_frame`   - current image frame in chosen colorspace\n
-            `iterations`    - the number of subsampling iterations\n
-
-        Returns
-        -------
-            `sample_space`  - list of event frames in decreasing resolutions
-        """
-
-        sample_space = [event_frame]
-
-        if method=='signed':
-            temp = np.copy(event_frame)
-            for _ in range(iterations):
-
-                temp += np.roll(event_frame, shift=1, axis=0)
-                temp += np.roll(temp, shift=1, axis=1)
-                event_sub = temp[1::2,1::2]
-                event_sub[event_sub>1] = 1
-                event_sub[event_sub<-1] = -1
-                sample_space.append(event_sub)
-                event_frame = np.copy(event_sub)
-                temp = np.copy(event_frame)
-        elif method=='unsigned':
-            abs_event_frame = np.abs(event_frame)
-            temp = np.copy(abs_event_frame)
-            for _ in range(iterations):
-
-                temp += np.roll(abs_event_frame, shift=1, axis=0)
-                temp += np.roll(temp, shift=1, axis=1)
-                event_sub = temp[1::2,1::2]
-                event_sub[event_sub<threshold] = 0
-                event_sub[event_sub>threshold] = 1
-                sample_space.append(event_sub)
-                abs_event_frame = np.copy(event_sub)
-                temp = np.copy(abs_event_frame)
+    @staticmethod
+    def new_subsample_event(event_frame, threshold: int):
         
-        return sample_space
+        if threshold==1:
+            sub_frame = np.pad(np.abs(event_frame), [(0,1), (1,0)], 'constant').astype('uint8')
+            sub_frame[0:-1,1:] |= sub_frame[0:-1,0:-1]
+            sub_frame[0:-1,1:] |= sub_frame[1:,1:]
+        elif threshold==4:
+            sub_frame = np.pad(np.abs(event_frame), [(0,1), (1,0)], 'constant').astype('uint8')
+            sub_frame[0:-1,1:] &= sub_frame[0:-1,0:-1]
+            sub_frame[0:-1,1:] &= sub_frame[1:,1:]
+        else:
+            sub_frame_a = np.pad(np.abs(event_frame), [(0,1), (1,0)], 'constant').astype('uint8')
+            sub_frame_a[0:-1,1:] &= sub_frame_a[0:-1,0:-1]
+            sub_frame_a[0:-1,1:] |= sub_frame_a[1:,1:]
+
+            sub_frame_b = np.pad(np.abs(event_frame), [(0,1), (1,0)], 'constant').astype('uint8')
+            sub_frame_b[0:-1,1:] |= sub_frame_b[0:-1,0:-1]
+            sub_frame_b[0:-1,1:] &= sub_frame_b[1:,1:]
+            if threshold==2:
+                sub_frame = sub_frame_a | sub_frame_b
+            elif threshold==3:
+                sub_frame = sub_frame_a & sub_frame_b
+            else:
+                raise ValueError("Invalid threshold: select from (1,2,3,4)")
+
+        return sub_frame[1:,0:-1][::2,::2]
 
     def event_noise_filter(
             self, 
@@ -215,26 +202,6 @@ class SimulateEvent(object):
 
         return event_frame*filtered_frame
     
-    # def filter_events_by_neighbours(self):
-
-    #     row, column = self.event_frame.shape
-
-    #     # Create padded array to share memory instead of using np.roll()
-    #     event_frame_padded = np.pad(np.abs(self.event_frame), ((2,2), (2,2)), 'constant').astype('uint8')
-    #     # Create 'rolled' arrays and check for neighbours
-    #     s1 = event_frame_padded[3:3+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-    #     s2 = event_frame_padded[4:4+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-    #     e1 = event_frame_padded[2:2+row, 3:3+column] & event_frame_padded[2:-2, 2:-2]
-    #     e2 = event_frame_padded[2:2+row, 4:4+column] & event_frame_padded[2:-2, 2:-2]
-    #     n1 = event_frame_padded[1:1+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-    #     n2 = event_frame_padded[0:0+row, 2:2+column] & event_frame_padded[2:-2, 2:-2]
-    #     w1 = event_frame_padded[2:2+row, 1:1+column] & event_frame_padded[2:-2, 2:-2]
-    #     w2 = event_frame_padded[2:2+row, 0:0+column] & event_frame_padded[2:-2, 2:-2]
-
-    #     event_frame_neighbours = ((s1 | s2 | e1 | e2 | n1 | n2 | w1 | w2).astype(self.event_frame.dtype))*self.event_frame
-
-    #     return event_frame_neighbours
-    
     def filter_events_by_neighbours(self, structure: np.array):
 
         row, column = self.event_frame.shape
@@ -257,9 +224,46 @@ class SimulateEvent(object):
                             event_frame_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
                             & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
             event_frame_neighbours |= neighbour_frame
-        # .astype(event_frame.dtype)
+
         return event_frame_neighbours.astype(self.event_frame.dtype)*self.event_frame
     
+    def filter_events_by_neighbours_polarity(self, structure: np.array):
+
+        row, column = self.event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+        structure[int(x_offset/2), int(y_offset/2)] = 0
+
+        event_p = np.copy(self.event_frame)
+        event_p[event_p == -1] = 0
+        event_n = np.abs(self.event_frame) - event_p
+
+        # Create padded array to share memory instead of using np.roll()
+        event_p_padded = np.pad(event_p, [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        event_n_padded = np.pad(event_n, [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        # Find elements to pad
+        y, x = np.nonzero(structure!=0)
+        # Create 'rolled' arrays
+        event_p_neighbours = np.copy(
+                                event_p_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
+                                & event_p_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+        event_n_neighbours = np.copy(
+                                event_n_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
+                                & event_n_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+
+        for i in range(1, x.shape[0]):
+            neighbour_p = (
+                            event_p_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+                            & event_p_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            neighbour_n = (
+                            event_n_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+                            & event_n_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_p_neighbours |= neighbour_p
+            event_n_neighbours |= neighbour_n
+        # .astype(event_frame.dtype)
+        return (event_p_neighbours.astype('float32') - event_n_neighbours.astype('float32')).astype(self.event_frame.dtype)
+
     def filter_events_by_neighbour_number(self, structure: np.array, threshold: int = 1):
 
         row, column = self.event_frame.shape
@@ -285,14 +289,60 @@ class SimulateEvent(object):
         # .astype(event_frame.dtype)
 
         return (event_frame_neighbour_number>threshold).astype(self.event_frame.dtype)*self.event_frame
-
-    def xor_event_buffer(self):
-        xor_event_buffer = np.zeros([self.event_frame.shape[0], self.event_frame.shape[1], self.buffer_length-1])
-        for element in range(0, self.buffer_length-1):
-            xor_event_buffer[:,:,element] = np.logical_xor(np.abs(self.event_buffer[:,:,element]), np.abs(self.event_buffer[:,:,element+1]))
-        
-        return xor_event_buffer
     
-    def calculate_event_neighbours(self, size: int = 5):
+    def event_neighbour_number(self, structure: np.array):
 
-        return convolve2d(np.abs(self.event_frame), np.ones([size,size]))
+        row, column = self.event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+        structure[int(x_offset/2), int(y_offset/2)] = 0
+
+        # Create padded array to share memory instead of using np.roll()
+        event_frame_padded = np.pad(np.abs(self.event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        # Find elements to pad
+        y, x = np.nonzero(structure!=0)
+        # Create 'rolled' arrays
+        event_frame_neighbours = np.copy(
+                                event_frame_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
+                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+
+        for i in range(1, x.shape[0]):
+            neighbour_frame = (
+                            event_frame_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+                            & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_frame_neighbours += neighbour_frame
+
+        return event_frame_neighbours
+
+    def event_feature_similarity(self, structure: np.array):
+
+        row, column = self.event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+        structure[int(x_offset/2), int(y_offset/2)] = 0
+
+        # Create padded array to share memory instead of using np.roll()
+        event_frame_padded = np.pad(np.abs(self.event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        # Find elements to pad
+        yo, xo = np.nonzero(structure!=0)
+        yz, xz = np.nonzero(structure==0)
+        # Create 'rolled' arrays
+        event_feature_similarity = np.copy(
+                                event_frame_padded[x_offset-xo[0]:x_offset-xo[0]+row, y_offset-yo[0]:y_offset-yo[0]+column]
+                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+
+        for i in range(1, xo.shape[0]):
+            neighbour_frame = (
+                            event_frame_padded[x_offset-xo[i]:x_offset-xo[i]+row, y_offset-yo[i]:y_offset-yo[i]+column]
+                            & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_feature_similarity += neighbour_frame
+
+        for i in range(1, xz.shape[0]):
+            neighbour_frame = (
+                            event_frame_padded[x_offset-xz[i]:x_offset-xz[i]+row, y_offset-yz[i]:y_offset-yz[i]+column]
+                            & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+            event_feature_similarity += np.invert(neighbour_frame)
+
+        return event_feature_similarity
