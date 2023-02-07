@@ -144,42 +144,60 @@ class DisplayImage(object):
             image = np.concatenate([image, event_buffer[:,:,frame]], axis=1)
         
         return image
-
+    
     def show_image(
             self, 
             images: list,
             resize: str = 'pad',
             window_scale: float = 1.0,
-            image_frame: bool = False):
+            image_frame: bool = False,
+            n_rows: int = 1):
         """
         Display list of images in a single window using OpenCV
 
         Parameters
         ----------
-            `images`       - list of np.array instances to be displayed
-            `resize`       - either 'pad' to add black border or 'repeat' to scale image to correct resolution using nearest neighour.
+            `images`       - list of np.array instances to be displayed.\n
+            `resize`       - either 'pad' to add black border or 'repeat' to scale image to correct resolution using nearest neighour.\n
+            `window_scale` - global scaling of displayed image.\n
+            `image_frame`  - add black border to displayed images.\n
+            `n_rows`       - number of rows the images are displayed on: len(images)%n_rows must equal 0.
         """
 
         img_pad = []
-        for image in images:
-            if (image.shape[0] < images[0].shape[0]) or (image.shape[1] < images[0].shape[1]):
-                if resize=='pad':
-                    image = np.pad(
-                        image, 
-                        pad_width=[
-                            (int((images[0].shape[0]-image.shape[0])/2), int((images[0].shape[0]-image.shape[0])/2)),
-                            (int((images[0].shape[1]-image.shape[1])/2), int((images[0].shape[1]-image.shape[1])/2)),
-                            (0, 0)], 
-                        mode='constant')
-                elif resize=='repeat':
-                    img_tmp = np.repeat(image, repeats=int(images[0].shape[0]/image.shape[0]), axis=0)
-                    image = np.repeat(img_tmp, repeats=int(images[0].shape[0]/image.shape[0]), axis=1)
-                else:
-                    raise ValueError('Invalid resize method')
-            if image_frame==True:
-                image = np.pad(image, [(1,1),(1,1),(0,0)], mode='constant')
-            img_pad.append(image)
-        img = np.concatenate(img_pad, axis=1)
+        n_images = len(images)
+        images_per_row = int(n_images/n_rows)
+
+        if (n_images%n_rows != 0):
+            raise ValueError("The number of images dispayed must be divisible by n_rows")
+        
+        img_rows = []
+        for row in range(n_rows):
+            img_pad = []
+            for i in range(row*images_per_row, (1+row)*images_per_row):
+                image = images[i]
+                if (images[i].shape[0] < images[0].shape[0]) or (images[i].shape[1] < images[0].shape[1]):
+                    if resize=='pad':
+                        image = np.pad(
+                            images[i], 
+                            pad_width=[
+                                (int((images[0].shape[0]-images[i].shape[0])/2), int((images[0].shape[0]-images[i].shape[0])/2)),
+                                (int((images[0].shape[1]-images[i].shape[1])/2), int((images[0].shape[1]-images[i].shape[1])/2)),
+                                (0, 0)], 
+                            mode='constant')
+                    elif resize=='repeat':
+                        img_tmp = np.repeat(images[i], repeats=int(images[0].shape[0]/images[i].shape[0]), axis=0)
+                        image = np.repeat(img_tmp, repeats=int(images[0].shape[0]/images[i].shape[0]), axis=1)
+                    else:
+                        raise ValueError('Invalid resize method')
+                if image_frame==True:
+                    image = np.pad(image, [(1,1),(1,1),(0,0)], mode='constant')
+                img_pad.append(image)
+            img_rows.append(np.concatenate(img_pad, axis=1))
+        if n_rows>1:
+            img = np.concatenate(img_rows, axis=0)
+        else:
+            img = img_rows[0]
         img = cv2.resize(img, (int(window_scale*img.shape[1]),int(window_scale*img.shape[0])))
         cv2.imshow(self.window_name, img)
 
