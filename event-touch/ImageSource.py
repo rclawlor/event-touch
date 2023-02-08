@@ -24,12 +24,12 @@ class DigitSensor(ImageSource):
     """
     Digit sensor class
     """
-    def __init__(self):
+    def __init__(self, serialno: str = 'D20431', resolution: str = 'QVGA', framerate: int = 60):
         self.frame_count = 0
-        self.serialno = 'D20431'
+        self.serialno = serialno
         self.name = 'DIGIT'
-        self.resolution = 'QVGA'
-        self.framerate = 60
+        self.resolution = resolution
+        self.framerate = framerate
         self.digit = None
 
     def __enter__(self):
@@ -67,7 +67,8 @@ class TactoSimulator(ImageSource):
             environment_config_name: str = 'digit', 
             sensor_config_path: str = None, 
             sensor_config_name: str = 'config_digit', 
-            use_panel: bool = True):
+            use_panel: bool = True,
+            noise_std: np.array = np.array([0.1,0.25,1])):
 
         if config_path is None:
             dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -93,6 +94,8 @@ class TactoSimulator(ImageSource):
         self.obj = None
 
         self.depth = None
+
+        self.noise_std = noise_std
 
         return
 
@@ -134,10 +137,22 @@ class TactoSimulator(ImageSource):
         # Disconnect Digit sensor
         self.disconnect()
     
+    def _add_noise(self, digit_frame):
 
+        digit_frame_float = digit_frame.astype('float32')
+        digit_frame_float[:,:,0] += np.random.normal(0, self.noise_std[0], digit_frame.shape[:-1])
+        digit_frame_float[:,:,1] += np.random.normal(0, self.noise_std[1], digit_frame.shape[:-1])
+        digit_frame_float[:,:,2] += np.random.normal(0, self.noise_std[2], digit_frame.shape[:-1])
+
+        digit_frame_float[digit_frame_float<0] = 0
+        digit_frame_float[digit_frame_float>255] = 255
+
+        return digit_frame_float.astype('uint8')
+        
     def get_frame(self):
-        colors, self.depth = self.digits.render(noise=True)
+        colors, self.depth = self.digits.render(noise=False)
         digit_frame = np.concatenate(colors, axis=1)
+        digit_frame = self._add_noise(digit_frame)
         return digit_frame
     
     def disconnect(self):
@@ -148,10 +163,9 @@ class Dataset(ImageSource):
     """
     Digit dataset class
     """
-    def __init__(self):
+    def __init__(self, directory):
         self.frame_count = 0
-        self.directory = './dataset/'
-        self.filename = 'arc_img_'
+        self.directory = directory
         return
     
     def __enter__(self):
@@ -166,9 +180,9 @@ class Dataset(ImageSource):
         `transpose`     - Show direct output from the image sensor, WxH instead of HxW\n
         """
         try:
-            frame = cv2.imread('{}img/{}{}.png'.format(self.directory, self.filename, str(self.frame_count).zfill(3)))
+            frame = cv2.imread(self.directory+str(self.frame_count).zfill(4)+'.png')
         except:
-            self.__exit__()
+            raise IndexError('Requested frame out of range')
 
         self.frame_count += 1
         

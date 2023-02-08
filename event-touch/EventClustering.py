@@ -80,7 +80,38 @@ class EventClustering(object):
             event_frame_shifted = event_frame_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
             event_frame_dilated |= event_frame_shifted
         # .astype(event_frame.dtype)
-        return event_frame_dilated
+        return event_frame_dilated.astype(event_frame.dtype)
+    
+    def dilate_event_frame_polarity(self, event_frame: np.array, structure: np.array):
+
+        row, column = event_frame.shape
+        y_offset, x_offset = structure.shape
+        y_offset -= 1
+        x_offset -= 1
+
+        event_p = np.copy(event_frame)
+        event_p[event_p==-1] = 0
+        event_n = np.abs(event_frame - event_p)
+
+        # Create padded array to share memory instead of using np.roll()
+        event_p_padded = np.pad(event_p, [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        event_n_padded = np.pad(event_n, [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+
+        # Find elements to pad
+        y, x = np.nonzero(structure!=0)
+        # Create 'rolled' arrays
+        event_p_dilated = np.copy(event_p_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column])
+        event_n_dilated = np.copy(event_n_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column])
+
+        for i in range(1, x.shape[0]):
+            event_p_shifted = event_p_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+            event_p_dilated |= event_p_shifted
+
+            event_n_shifted = event_n_padded[x_offset-x[i]:x_offset-x[i]+row, y_offset-y[i]:y_offset-y[i]+column]
+            event_n_dilated |= event_n_shifted
+
+        # .astype(event_frame.dtype)
+        return (event_p_dilated.astype(event_frame.dtype) - event_n_dilated.astype(event_frame.dtype)).astype(event_frame.dtype)
     
     def cluster_event_frame(self, event_frame: np.array, niter: int = 10):
 

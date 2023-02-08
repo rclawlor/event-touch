@@ -40,7 +40,7 @@ class SimulateEvent(object):
             traceback):
         return
     
-    def intialise_pixel_memory(
+    def initialise_pixel_memory(
             self, 
             frame: np.array):
         """
@@ -290,22 +290,23 @@ class SimulateEvent(object):
 
         return (event_frame_neighbour_number>threshold).astype(self.event_frame.dtype)*self.event_frame
     
-    def event_neighbour_number(self, structure: np.array):
+    @staticmethod
+    def event_neighbour_number(event_frame: np.array, structure: np.array):
 
-        row, column = self.event_frame.shape
+        row, column = event_frame.shape
         y_offset, x_offset = structure.shape
         y_offset -= 1
         x_offset -= 1
         structure[int(x_offset/2), int(y_offset/2)] = 0
 
         # Create padded array to share memory instead of using np.roll()
-        event_frame_padded = np.pad(np.abs(self.event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
+        event_frame_padded = np.pad(np.abs(event_frame), [(int(y_offset/2),), (int(x_offset/2),)], 'constant').astype('uint8')
         # Find elements to pad
         y, x = np.nonzero(structure!=0)
         # Create 'rolled' arrays
         event_frame_neighbours = np.copy(
                                 event_frame_padded[x_offset-x[0]:x_offset-x[0]+row, y_offset-y[0]:y_offset-y[0]+column]
-                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)])
+                                & event_frame_padded[int(x_offset/2):-int(x_offset/2),int(y_offset/2):-int(y_offset/2)]).astype('float32')
 
         for i in range(1, x.shape[0]):
             neighbour_frame = (
